@@ -27,10 +27,10 @@ from pydantic import BaseModel, Field
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 PERSIST_DIR = str(BASE_DIR / "vectordb" / "allianz")
 COLLECTION_NAME = "allianz_care"
-
+print('여기여기여기여기여기여기여기여기여기여기여기', BASE_DIR)
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 

@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import fitz
 import pdfplumber
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data" / "raw" / "allianz"
 CHUNKED_DIR = DATA_DIR / "chunked"
 

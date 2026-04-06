@@ -1,7 +1,7 @@
 import streamlit as st
 from langchain_core.documents import Document
 
-from rag_utils import run_chat_turn
+from src.allianz.rag_utils import run_chat_turn
 
 st.set_page_config(page_title="Allianz Insurance Assistant", page_icon="💬", layout="wide")
 
