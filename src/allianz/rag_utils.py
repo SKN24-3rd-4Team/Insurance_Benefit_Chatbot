@@ -28,7 +28,7 @@ from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-PERSIST_DIR = str(BASE_DIR / "vectordb")
+PERSIST_DIR = str(BASE_DIR / "vectordb" / "allianz")
 COLLECTION_NAME = "allianz_care"
 
 ENV_PATH = BASE_DIR / ".env"

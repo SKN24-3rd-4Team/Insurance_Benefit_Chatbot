@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DATA_DIR = BASE_DIR / "data" / "raw" / "allianz"
 CHUNKED_DIR = DATA_DIR / "chunked"
-DB_DIR = BASE_DIR / "vectordb"
+DB_DIR = BASE_DIR / "vectordb" / "allianz"
 COLLECTION_NAME = "allianz_care"
 
 ENV_PATH = BASE_DIR / ".env"
