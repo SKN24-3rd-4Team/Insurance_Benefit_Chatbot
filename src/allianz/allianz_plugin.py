@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / 'src' / 'shared'))
 sys.path.insert(0, str(ROOT / 'src' / 'allianz'))
-from insurance_plugin import InsurancePlugin
+from src.shared.insurance_plugin import InsurancePlugin
 
 from rag_utils import (
     normalize_question,
@@ -89,6 +89,7 @@ class AllianzPlugin(InsurancePlugin):
                 "extra": {},
             }
 
+        # [PRIORITY 1] 슬롯 추출 및 누적
         old_slots = state.get("slots", {})
         is_followup = state.get("needs_clarification", False) or looks_like_followup_answer(question)
 
@@ -102,6 +103,7 @@ class AllianzPlugin(InsurancePlugin):
             pending_followup=is_followup,
             last_followup_question=state.get("clarification_message", ""),
         )
+        print(f"추출된 슬롯: {new_slots}")
         merged_slots = merge_slots(old_slots, new_slots)
 
         # plan 정규화 및 누적
@@ -117,7 +119,7 @@ class AllianzPlugin(InsurancePlugin):
         )
 
         # missing slots 판단
-        intent = merged_slots.get("intent", normalized.get("intent", "coverage"))
+        intent = merged_slots.get("intent", normalized.get("intent", ""))
         missing_slots = decide_missing_slots(intent, merged_slots, question)
 
         # followup 한도 초과 시 강제 검색
@@ -125,6 +127,7 @@ class AllianzPlugin(InsurancePlugin):
         if followup_count >= state.get("max_followups", 2):
             missing_slots = []
 
+        print(f'missing_slots: {missing_slots}, followup_count: {followup_count}')
         needs_clarification = bool(missing_slots)
         clarification_message = ""
         if needs_clarification:
@@ -134,7 +137,7 @@ class AllianzPlugin(InsurancePlugin):
                 intent=intent,
                 slots=merged_slots,
             )
-
+            print(f"추가 질문: {clarification_message}")
         english_query = normalized.get("english_query", "") if not needs_clarification else ""
 
         return {
@@ -162,5 +165,6 @@ class AllianzPlugin(InsurancePlugin):
             question=query,
             normalized=_normalized,
             slots=slots,
+            use_latest_only=False,
         )
         return docs

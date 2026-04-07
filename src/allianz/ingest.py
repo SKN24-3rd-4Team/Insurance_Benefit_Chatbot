@@ -4,9 +4,10 @@ import os
 import re
 import json
 import shutil
+import argparse
 from math import ceil
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 import fitz  # PyMuPDF
 import torch
@@ -19,14 +20,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 DATA_DIR = BASE_DIR / "data" / "raw" / "allianz"
 CHUNKED_DIR = DATA_DIR / "chunked"
-DB_DIR = BASE_DIR / "vectordb" / "allianz"
-COLLECTION_NAME = "allianz_care"
+
+DB_LATEST_DIR = BASE_DIR / "vectordb" / 'allianz' / "allianz_latest"
+DB_ALL_DIR = BASE_DIR / "vectordb" / 'allianz' / "allianz_all"
+
+COLLECTION_LATEST = "allianz_latest"
+COLLECTION_ALL = "allianz_all"
 
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 # 실행 옵션
-# 다국어 임베딩 모델과 인덱싱 배치 사이즈는 환경변수로 조정 가능
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "BAAI/bge-m3")
 EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cpu")
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "16"))
@@ -37,123 +41,153 @@ TORCH_NUM_THREADS = int(
     os.getenv("TORCH_NUM_THREADS", str(max(1, (os.cpu_count() or 4) - 1)))
 )
 
-# PyTorch의 스레드 수를 제한하여 인덱싱 시 CPU 과부하 방지
 torch.set_num_threads(TORCH_NUM_THREADS)
 try:
     torch.set_num_interop_threads(1)
 except RuntimeError:
     pass
 
-# 1. 파일 목록
+# 파일 목록
+# 같은 문서군(doc_group) 안에서는 최신 버전 1개만 is_latest=True가 되도록 관리
 FILES: List[Dict[str, Any]] = [
     # 글로벌 공통
     {
         "path": DATA_DIR / "DOC-Care-IBG-EN-1125_개인고객용혜택가이드.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "global_benefit_guide",
         "doc_year": 2025,
         "region": "global",
         "product_family": "care_global",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "care-tob-en_보장금액.pdf",
         "doc_type": "tob",
+        "doc_group": "global_tob",
         "doc_year": 2025,
         "region": "global",
         "product_family": "care_global",
+        "is_latest": True,
         "chunked_path": CHUNKED_DIR / "care-tob-en_보장금액_table_chunks.jsonl",
     },
     {
         "path": DATA_DIR / "FRM-PreAuth-EN-0825_사전승인신청서.pdf",
         "doc_type": "preauth_form",
+        "doc_group": "global_preauth_form",
         "doc_year": 2025,
         "region": "global",
         "product_family": "care_global",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "FRM-PCF-EN-1125_사후보험청구서.pdf",
         "doc_type": "claim_form",
+        "doc_group": "global_claim_form",
         "doc_year": 2025,
         "region": "global",
         "product_family": "care_global",
+        "is_latest": True,
     },
 
     # 지역별 코퍼스
     {
         "path": DATA_DIR / "DOC-Singapore-IBG-EN-0126_싱가포르.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "singapore_benefit_guide",
         "doc_year": 2026,
         "region": "singapore",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-Dubai-Northern-Emirates-EN-0126_두바이.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "dubai_northern_emirates_benefit_guide",
         "doc_year": 2026,
         "region": "dubai_northern_emirates",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-LEBANON-IBG-EN-0725_레바논.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "lebanon_benefit_guide",
         "doc_year": 2025,
         "region": "lebanon",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-Indonesia-en-UK-1123_인도네시아.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "indonesia_benefit_guide",
         "doc_year": 2024,
         "region": "indonesia",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-Vietnam-en-UK-0823_베트남.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "vietnam_benefit_guide",
         "doc_year": 2023,
         "region": "vietnam",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-HongKong-en-UK-2024_홍콩.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "hong_kong_benefit_guide",
         "doc_year": 2023,
         "region": "hong_kong",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-AZJD-en-UK-0824_중국.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "china_benefit_guide",
         "doc_year": 2024,
         "region": "china",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-SUISSE-IBG-KPT-EN-0624_스위스.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "switzerland_benefit_guide",
         "doc_year": 2022,
         "region": "switzerland",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-CARE-UK-EN-1125_영국.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "uk_benefit_guide",
         "doc_year": 2025,
         "region": "uk",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-IBG-FP-en-UK-1223_프랑스.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "france_benelux_monaco_benefit_guide",
         "doc_year": 2024,
         "region": "france_benelux_monaco",
         "product_family": "regional",
+        "is_latest": True,
     },
     {
         "path": DATA_DIR / "DOC-Global-IBG-EN-0524_남미.pdf",
         "doc_type": "benefit_guide",
+        "doc_group": "latin_america_benefit_guide",
         "doc_year": 2024,
         "region": "latin_america",
         "product_family": "regional",
+        "is_latest": True,
     },
 ]
 
@@ -195,11 +229,13 @@ def build_common_metadata(
     metadata = {
         "source": source_name,
         "doc_type": file_info["doc_type"],
+        "doc_group": file_info.get("doc_group", f'{file_info["region"]}_{file_info["doc_type"]}'),
         "doc_year": file_info["doc_year"],
         "region": file_info["region"],
         "product_family": file_info["product_family"],
         "page": page_num,
         "insurer": "Allianz",
+        "is_latest": file_info.get("is_latest", False),
     }
 
     if chunk_idx is not None:
@@ -264,6 +300,8 @@ def build_search_tags(file_info: Dict[str, Any]) -> str:
         f"region: {' | '.join(region_aliases)}",
         f"doc_type: {' | '.join(doc_type_aliases)}",
         f"product_family: {file_info['product_family']}",
+        f"doc_year: {file_info['doc_year']}",
+        f"is_latest: {file_info.get('is_latest', False)}",
         "insurer: Allianz 알리안츠",
         "keywords: " + ", ".join(INSURANCE_SEARCH_TAGS),
     ])
@@ -296,6 +334,7 @@ def chunk_benefit_guide(
                 )
             )
     return docs
+
 
 def normalize_form_line(text: str) -> str:
     if not text:
@@ -359,7 +398,6 @@ def clean_form_field(line: str) -> str:
 
 def summarize_form_section(section: str, fields: List[str], source_name: str) -> str:
     field_text = ", ".join(fields)
-
     section_l = section.lower()
 
     if "patient" in section_l and "detail" in section_l:
@@ -416,6 +454,7 @@ def summarize_form_section(section: str, fields: List[str], source_name: str) ->
         summary,
         f"Fields included: {field_text}",
     ])
+
 
 def chunk_form(
     pages: List[tuple[int, str]],
@@ -487,7 +526,6 @@ def chunk_form(
             if len(cleaned) < 2:
                 continue
 
-            # 너무 긴 문장은 안내문/설명문일 가능성이 높으므로 섹션 설명으로는 유지하되 필드로는 제한적으로만 반영
             if len(cleaned) > 180:
                 continue
 
@@ -515,7 +553,7 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
 
     return rows
 
-# TOB JSONL에서 추출 -> DOCUMENT 리스트로 변환
+
 def chunk_tob_jsonl(
     jsonl_path: Path,
     source_name: str,
@@ -562,21 +600,22 @@ def chunk_tob_jsonl(
     return docs
 
 
-def build_documents() -> List[Document]:
+def build_documents(file_list: List[Dict[str, Any]] | None = None) -> List[Document]:
     all_docs: List[Document] = []
+    target_files = file_list or FILES
 
-    for file_info in FILES:
+    for file_info in target_files:
         path: Path = file_info["path"]
         source_name = path.name
         doc_type = file_info["doc_type"]
 
         print(
             f"[INFO] 처리 중: {source_name} | type={doc_type} | "
-            f"region={file_info['region']} | year={file_info['doc_year']}"
+            f"region={file_info['region']} | year={file_info['doc_year']} | "
+            f"is_latest={file_info.get('is_latest', False)}"
         )
 
         if doc_type == "tob":
-            # TOB는 PDF에서 직접 텍스트를 추출하지 않고, 사전에 추출된 JSONL 파일을 사용
             jsonl_path: Path | None = file_info.get("chunked_path")
 
             if not jsonl_path:
@@ -607,7 +646,7 @@ def build_documents() -> List[Document]:
 
     return all_docs
 
-# 다국어 임베딩 모델 불러오기
+
 def build_embeddings() -> HuggingFaceEmbeddings:
     return HuggingFaceEmbeddings(
         model_name=EMBED_MODEL_NAME,
@@ -619,30 +658,24 @@ def build_embeddings() -> HuggingFaceEmbeddings:
     )
 
 
-def reset_vectordb_if_needed() -> None:
-    if RESET_VECTORDB and DB_DIR.exists():
-        print(f"[INFO] 기존 벡터DB 삭제: {DB_DIR}")
-        shutil.rmtree(DB_DIR, ignore_errors=True)
+def reset_vectordbs_if_needed() -> None:
+    if RESET_VECTORDB:
+        for db_dir in [DB_LATEST_DIR, DB_ALL_DIR]:
+            if db_dir.exists():
+                print(f"[INFO] 기존 벡터DB 삭제: {db_dir}")
+                shutil.rmtree(db_dir, ignore_errors=True)
 
-# DOCUMENT 리스트를 벡터DB에 인덱싱
-def index_documents(documents: List[Document], batch_size: int = INDEX_BATCH_SIZE) -> None:
+
+def _index_to_single_store(
+    documents: List[Document],
+    persist_directory: Path,
+    collection_name: str,
+    embeddings: HuggingFaceEmbeddings,
+    batch_size: int,
+) -> Chroma | None:
     if not documents:
-        print("[WARN] 인덱싱할 문서가 없습니다.")
-        return
-
-    reset_vectordb_if_needed()
-
-    print(f"[INFO] Total chunks: {len(documents)}")
-    print(
-        f"[INFO] EMBED_MODEL_NAME={EMBED_MODEL_NAME}, "
-        f"EMBED_DEVICE={EMBED_DEVICE}, "
-        f"EMBED_BATCH_SIZE={EMBED_BATCH_SIZE}, "
-        f"INDEX_BATCH_SIZE={batch_size}, "
-        f"TORCH_NUM_THREADS={TORCH_NUM_THREADS}, "
-        f"RESET_VECTORDB={RESET_VECTORDB}"
-    )
-
-    embeddings = build_embeddings()
+        print(f"[WARN] 인덱싱할 문서가 없습니다: {collection_name}")
+        return None
 
     vectordb = None
     total = len(documents)
@@ -653,28 +686,177 @@ def index_documents(documents: List[Document], batch_size: int = INDEX_BATCH_SIZ
         end = min(start + batch_size, total)
         batch_docs = documents[start:end]
 
-        print(f"[INFO] Embedding batch {i + 1}/{num_batches} ({start}~{end})")
+        print(f"[INFO] [{collection_name}] Embedding batch {i + 1}/{num_batches} ({start}~{end})")
 
         if vectordb is None:
             vectordb = Chroma.from_documents(
                 documents=batch_docs,
                 embedding=embeddings,
-                persist_directory=str(DB_DIR),
-                collection_name=COLLECTION_NAME,
+                persist_directory=str(persist_directory),
+                collection_name=collection_name,
             )
         else:
             vectordb.add_documents(batch_docs)
 
     if vectordb is not None:
-        vectordb.persist()
+        try:
+            vectordb.persist()
+        except Exception:
+            pass
 
-    print(f"[DONE] Indexed {len(documents)} chunks into {DB_DIR}")
+    return vectordb
 
 
-def main() -> None:
+def build_vectorstores(
+    reload: bool = False,
+    batch_size: int = INDEX_BATCH_SIZE,
+) -> Tuple[Chroma | None, Chroma | None, List[Document], List[Document]]:
+    if reload:
+        reset_vectordbs_if_needed()
+
     documents = build_documents()
-    print(f"[INFO] 총 청크 수: {len(documents)}")
-    index_documents(documents)
+    latest_documents = [d for d in documents if d.metadata.get("is_latest", False)]
+
+    print(f"[INFO] Total chunks(all): {len(documents)}")
+    print(f"[INFO] Total chunks(latest): {len(latest_documents)}")
+    print(
+        f"[INFO] EMBED_MODEL_NAME={EMBED_MODEL_NAME}, "
+        f"EMBED_DEVICE={EMBED_DEVICE}, "
+        f"EMBED_BATCH_SIZE={EMBED_BATCH_SIZE}, "
+        f"INDEX_BATCH_SIZE={batch_size}, "
+        f"TORCH_NUM_THREADS={TORCH_NUM_THREADS}"
+    )
+
+    embeddings = build_embeddings()
+
+    vectorstore_latest = _index_to_single_store(
+        documents=latest_documents,
+        persist_directory=DB_LATEST_DIR,
+        collection_name=COLLECTION_LATEST,
+        embeddings=embeddings,
+        batch_size=batch_size,
+    )
+
+    vectorstore_all = _index_to_single_store(
+        documents=documents,
+        persist_directory=DB_ALL_DIR,
+        collection_name=COLLECTION_ALL,
+        embeddings=embeddings,
+        batch_size=batch_size,
+    )
+
+    print("[DONE] latest/all 벡터스토어 구축 완료")
+    return vectorstore_latest, vectorstore_all, documents, latest_documents
+
+
+def load_vectorstores() -> Tuple[Chroma, Chroma]:
+    embeddings = build_embeddings()
+
+    vectorstore_latest = Chroma(
+        persist_directory=str(DB_LATEST_DIR),
+        embedding_function=embeddings,
+        collection_name=COLLECTION_LATEST,
+    )
+    vectorstore_all = Chroma(
+        persist_directory=str(DB_ALL_DIR),
+        embedding_function=embeddings,
+        collection_name=COLLECTION_ALL,
+    )
+    return vectorstore_latest, vectorstore_all
+
+
+def update_vectorstore_latest(
+    vectorstore_latest: Chroma,
+    vectorstore_all: Chroma,
+    new_file_info: Dict[str, Any],
+) -> Tuple[List[Document], List[Document]]:
+    """
+    신규 문서 버전이 들어왔을 때:
+    - 같은 doc_group의 기존 latest 문서는 latest DB에서 제거
+    - FILES 내부의 기존 latest는 False로 변경
+    - 신규 문서는 is_latest=True로 추가
+    - latest DB / all DB 모두에 신규 chunk 추가
+    """
+    new_file_info = dict(new_file_info)
+    doc_group = new_file_info.get(
+        "doc_group",
+        f'{new_file_info["region"]}_{new_file_info["doc_type"]}'
+    )
+    new_file_info["doc_group"] = doc_group
+    new_file_info["is_latest"] = True
+
+    # 1) 기존 latest 삭제
+    existing = vectorstore_latest.get(
+        where={
+            "$and": [
+                {"doc_group": {"$eq": doc_group}},
+                {"is_latest": {"$eq": True}},
+            ]
+        }
+    )
+    old_ids = existing.get("ids", [])
+    if old_ids:
+        vectorstore_latest.delete(ids=old_ids)
+        print(f"[INFO] 기존 latest 청크 삭제: {len(old_ids)}개 | doc_group={doc_group}")
+
+    # 2) FILES 내부 기존 latest 해제
+    for item in FILES:
+        item_group = item.get("doc_group", f'{item["region"]}_{item["doc_type"]}')
+        if item_group == doc_group and item.get("is_latest", False):
+            item["is_latest"] = False
+
+    FILES.append(new_file_info)
+
+    # 3) 신규 문서 청킹
+    new_docs = build_documents([new_file_info])
+    if not new_docs:
+        print("[WARN] 신규 문서에서 생성된 청크가 없습니다.")
+        return [], []
+
+    # 4) latest/all에 추가
+    vectorstore_latest.add_documents(new_docs)
+    vectorstore_all.add_documents(new_docs)
+
+    try:
+        vectorstore_latest.persist()
+    except Exception:
+        pass
+
+    try:
+        vectorstore_all.persist()
+    except Exception:
+        pass
+
+    print(
+        f"[DONE] 신규 최신 버전 반영 완료 | "
+        f"doc_group={doc_group} | year={new_file_info['doc_year']} | chunks={len(new_docs)}"
+    )
+    return new_docs, new_docs
+
+
+def get_documents_from_store(vectorstore: Chroma) -> List[Document]:
+    raw = vectorstore.get(include=["documents", "metadatas"])
+    docs = []
+    for content, meta in zip(raw.get("documents", []), raw.get("metadatas", [])):
+        docs.append(Document(page_content=content, metadata=meta or {}))
+    return docs
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Allianz RAG 벡터스토어 구축")
+    parser.add_argument("--reload", action="store_true", help="기존 latest/all DB 삭제 후 재구축")
+    args = parser.parse_args()
+
+    vs_latest, vs_all, all_docs, latest_docs = build_vectorstores(
+        reload=args.reload,
+        batch_size=INDEX_BATCH_SIZE,
+    )
+
+    print(f"[INFO] 전체 청크 수(all): {len(all_docs)}")
+    print(f"[INFO] 최신 청크 수(latest): {len(latest_docs)}")
+
+    if vs_latest is None or vs_all is None:
+        print("[WARN] 벡터스토어 생성이 완전하지 않을 수 있습니다.")
 
 
 if __name__ == "__main__":

@@ -27,15 +27,81 @@ from pydantic import BaseModel, Field
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi
 
+try:
+    from kiwipiepy import Kiwi
+except Exception:
+    Kiwi = None
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-PERSIST_DIR = str(BASE_DIR / "vectordb" / "allianz")
-COLLECTION_NAME = "allianz_care"
-print('여기여기여기여기여기여기여기여기여기여기여기', BASE_DIR)
+
+PERSIST_DIR_LATEST = str(BASE_DIR / "vectordb" / 'allianz' / "allianz_latest")
+PERSIST_DIR_ALL = str(BASE_DIR / "vectordb" / 'allianz' / "allianz_all")
+
+COLLECTION_NAME_LATEST = "allianz_latest"
+COLLECTION_NAME_ALL = "allianz_all"
+
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "BAAI/bge-m3")
 EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cpu")
+
+BM25_TOKENIZER_BACKEND = os.getenv("BM25_TOKENIZER_BACKEND", "auto").lower()
+RAG_DEBUG = os.getenv("RAG_DEBUG", "true").lower() == "true"
+
+_KIWI = None
+_VECTORSTORE_LATEST = None
+_VECTORSTORE_ALL = None
+_BM25_INDEXES = {
+    "latest": None,
+    "all": None,
+}
+_RERANKER = None
+
+
+def debug_log(tag: str, **payload: Any) -> None:
+    if not RAG_DEBUG:
+        return
+    try:
+        print(f"\n[RAG][{tag}] " + json.dumps(payload, ensure_ascii=False, default=str, indent=2))
+    except Exception:
+        print(f"[RAG][{tag}] {payload}")
+
+
+def get_kiwi():
+    global _KIWI
+    if BM25_TOKENIZER_BACKEND == "regex":
+        return None
+    if Kiwi is None:
+        return None
+    if _KIWI is None:
+        _KIWI = Kiwi()
+        debug_log("bm25_tokenizer", backend="kiwi")
+    return _KIWI
+
+
+def tokenize_korean_with_kiwi(text: str) -> List[str]:
+    kiwi = get_kiwi()
+    if kiwi is None:
+        return []
+
+    tokens: List[str] = []
+    keep_tags = {"NNG", "NNP", "NNB", "NR", "SL", "SN", "VV", "VA", "MAG", "XR"}
+
+    for token in kiwi.tokenize(text):
+        form = token.form.strip().lower()
+        if not form or len(form) == 1:
+            continue
+        if token.tag in keep_tags or re.search(r"[a-z0-9가-힣]", form):
+            tokens.append(form)
+
+    return tokens
+
+
+def tokenize_latin_text(text: str) -> List[str]:
+    cleaned = re.sub(r"[^a-z0-9가-힣\s]", " ", text.lower())
+    return [tok for tok in cleaned.split() if len(tok) > 1]
+
 
 # 랭그래프에서 사용할 채팅 상태 타입 정의
 # messages: 대화 메시지 리스트
@@ -54,6 +120,7 @@ EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cpu")
 # is_followup_answer: 현재 답변이 추가 질문에 대한 답변인지 여부
 class ChatState(TypedDict, total=False):
     messages: List[BaseMessage]
+    plan_or_intent:   Optional[str]
     user_question: str
 
     normalized: Dict[str, Any]
@@ -110,28 +177,49 @@ class ConversationState(TypedDict, total=False):
 
 # vectordb 연결 함수
 # HuggingFaceEmbeddings를 사용하여 문서 임베딩을 생성하고, Chroma 벡터스토어에 연결하여 검색 기능을 제공
-def get_vectorstore() -> Chroma:
-    embeddings = HuggingFaceEmbeddings(
+def build_embeddings() -> HuggingFaceEmbeddings:
+    return HuggingFaceEmbeddings(
         model_name=EMBED_MODEL_NAME,
         model_kwargs={"device": EMBED_DEVICE},
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    return Chroma(
-        persist_directory=str(PERSIST_DIR),
-        embedding_function=embeddings,
-        collection_name=COLLECTION_NAME,
-    )
 
-# 언어 및 지역 감지 함수
+def get_vectorstore_latest() -> Chroma:
+    global _VECTORSTORE_LATEST
+    if _VECTORSTORE_LATEST is None:
+        embeddings = build_embeddings()
+        _VECTORSTORE_LATEST = Chroma(
+            persist_directory=PERSIST_DIR_LATEST,
+            embedding_function=embeddings,
+            collection_name=COLLECTION_NAME_LATEST,
+        )
+        debug_log("vectorstore_loaded", store_mode="latest", persist_dir=PERSIST_DIR_LATEST)
+    return _VECTORSTORE_LATEST
+
+
+def get_vectorstore_all() -> Chroma:
+    global _VECTORSTORE_ALL
+    if _VECTORSTORE_ALL is None:
+        embeddings = build_embeddings()
+        _VECTORSTORE_ALL = Chroma(
+            persist_directory=PERSIST_DIR_ALL,
+            embedding_function=embeddings,
+            collection_name=COLLECTION_NAME_ALL,
+        )
+        debug_log("vectorstore_loaded", store_mode="all", persist_dir=PERSIST_DIR_ALL)
+    return _VECTORSTORE_ALL
+
+
 def fallback_detect_language(text: str) -> str:
-    if any('\u4e00' <= c <= '\u9fff' for c in text):
+    if any("\u4e00" <= c <= "\u9fff" for c in text):
         return "zh"
-    if any('\u3040' <= c <= '\u30ff' for c in text):
+    if any("\u3040" <= c <= "\u30ff" for c in text):
         return "ja"
-    if any('\uac00' <= c <= '\ud7a3' for c in text):
+    if any("\uac00" <= c <= "\ud7a3" for c in text):
         return "ko"
     return "en"
+
 
 def fallback_detect_region(question: str) -> Optional[str]:
     q = question.lower()
@@ -175,6 +263,7 @@ def doc_unique_key(doc: Document) -> tuple:
         doc.metadata.get("chunk_idx"),
         doc.metadata.get("doc_type"),
         doc.metadata.get("region"),
+        doc.metadata.get("doc_year"),
     )
 
 
@@ -193,10 +282,11 @@ def build_context(docs: List[Document]) -> str:
         page = d.metadata.get("page")
         doc_type = d.metadata.get("doc_type")
         year = d.metadata.get("doc_year")
+        is_latest = d.metadata.get("is_latest")
         content = strip_search_tags(d.page_content)
 
         context_parts.append(
-            f"[Document: {source} | region: {region} | type: {doc_type} | year: {year} | page: {page}]\n"
+            f"[Document: {source} | region: {region} | type: {doc_type} | year: {year} | latest: {is_latest} | page: {page}]\n"
             f"{content}"
         )
 
@@ -245,7 +335,7 @@ def fallback_normalize_question(question: str, language: str) -> Dict[str, Any]:
         intent = "claim"
     else:
         intent = "coverage"
-    
+
     region = fallback_detect_region(question)
     english_query = fallback_build_english_query(question, intent, region)
 
@@ -280,7 +370,6 @@ User question:
 """
    # LLM이 제대로 된 JSON을 반환하지 않거나, 의도/지역을 잘못 감지하는 경우에 대비하여 fallback 언어 감지 및 룰 기반 정규화도 함께 수행 
     fallback_language = fallback_detect_language(question)
-    fallback_region = fallback_detect_region(question)
 
     try:
         # llm 실행
@@ -404,6 +493,8 @@ def score_document(question: str, doc: Document, intent: str, detected_region: O
         score += 6
     if metadata.get("region") == "global":
         score += 2
+    if metadata.get("is_latest"):
+        score += 2
 
     if intent == "preauth" and metadata.get("doc_type") in ["preauth_form", "benefit_guide", "tob"]:
         score += 4
@@ -429,10 +520,9 @@ def score_document(question: str, doc: Document, intent: str, detected_region: O
             score += 3
 
     score += min(len(content) // 300, 3)
-    print(f"관련성 점수 Scoring doc {metadata.get('source')} (region: {metadata.get('region')}, type: {metadata.get('doc_type')}) => score: {score}")
     return score
 
-# reranking을 통해 상위 8개 문서만 최종 검색 결과로 반환 (기본적으로 벡터 유사도 검색으로 20개 정도 가져온 후 재점수화)
+
 def rerank_documents(question: str, docs: List[Document], top_n: int = 8) -> List[Document]:
     if not docs:
         return docs
@@ -447,25 +537,44 @@ def rerank_documents(question: str, docs: List[Document], top_n: int = 8) -> Lis
             pairs.append([question, short_content])
 
         scores = reranker.predict(pairs)
-
         rescored = list(zip(docs, scores))
         rescored.sort(key=lambda x: float(x[1]), reverse=True)
 
         return [doc for doc, _ in rescored[:top_n]]
-
     except Exception:
         return docs[:top_n]
 
-_BM25_INDEX = None
 
-# 간단한 토큰화 함수. BM25 검색을 위해 텍스트를 소문자로 변환하고, 특수문자를 제거한 후 공백으로 분할하여 토큰 리스트를 반환
+# BM25용 토큰화 함수.
+# - 한국어가 있으면 Kiwi 형태소 분석기를 우선 사용(설치되어 있을 때)
+# - 설치되어 있지 않으면 regex fallback 사용
+# - 영어/숫자 토큰도 같이 유지
 def simple_tokenize(text: str) -> List[str]:
-    text = strip_search_tags(text.lower())
-    text = re.sub(r"[^a-z0-9가-힣\s]", " ", text)
-    return text.split()
+    text = strip_search_tags(text)
 
-# BM25 인덱스 구축 함수. 벡터DB에서 문서와 메타데이터를 가져와서, BM25 검색을 위한 토큰화된 코퍼스를 생성하고, BM25 모델을 초기화
-def build_bm25_index(vectordb):
+    has_korean = bool(re.search(r"[가-힣]", text))
+    kiwi_tokens: List[str] = []
+
+    if BM25_TOKENIZER_BACKEND in {"auto", "kiwi"} and has_korean:
+        kiwi_tokens = tokenize_korean_with_kiwi(text)
+
+    latin_tokens = tokenize_latin_text(text)
+
+    seen = set()
+    merged: List[str] = []
+    for tok in [*kiwi_tokens, *latin_tokens]:
+        if tok and tok not in seen:
+            seen.add(tok)
+            merged.append(tok)
+
+    if merged:
+        return merged
+
+    fallback = re.sub(r"[^a-z0-9가-힣\s]", " ", text.lower())
+    return [tok for tok in fallback.split() if len(tok) > 1]
+
+# BM25 인덱스 구축 함수. 벡터DB에서 문서와 메타데이터를 가져와서, BM25 검색을 위한 토큰화된 코퍼스를 생성하고, BM25 모델을 초기화 
+def build_bm25_index(vectordb: Chroma, store_mode: str):
     data = vectordb.get(include=["documents", "metadatas"])
     raw_docs = data.get("documents", [])
     raw_metas = data.get("metadatas", [])
@@ -475,17 +584,34 @@ def build_bm25_index(vectordb):
         docs.append(Document(page_content=content, metadata=meta or {}))
 
     tokenized_corpus = [simple_tokenize(d.page_content) for d in docs]
+    sample_tokens = tokenized_corpus[0][:20] if tokenized_corpus else []
+
+    debug_log(
+        "bm25_index_built",
+        store_mode=store_mode,
+        doc_count=len(docs),
+        tokenizer_backend=("kiwi" if get_kiwi() is not None else "regex"),
+        sample_tokens=sample_tokens,
+    )
+
     bm25 = BM25Okapi(tokenized_corpus)
     return bm25, docs
 
-def get_bm25_index():
-    global _BM25_INDEX
-    if _BM25_INDEX is None:
-        vectordb = get_vectorstore()
-        _BM25_INDEX = build_bm25_index(vectordb)
-    return _BM25_INDEX
 
-def bm25_search(bm25, docs: List[Document], query: str, top_k: int = 10):
+def get_bm25_index(store_mode: str = "latest"):
+    global _BM25_INDEXES
+
+    if store_mode not in {"latest", "all"}:
+        raise ValueError(f"invalid store_mode: {store_mode}")
+
+    if _BM25_INDEXES[store_mode] is None:
+        vectordb = get_vectorstore_latest() if store_mode == "latest" else get_vectorstore_all()
+        _BM25_INDEXES[store_mode] = build_bm25_index(vectordb, store_mode)
+
+    return _BM25_INDEXES[store_mode]
+
+
+def bm25_search(bm25, docs: List[Document], query: str, top_k: int = 10, store_mode: str = "latest"):
     tokenized_query = simple_tokenize(query)
     scores = bm25.get_scores(tokenized_query)
 
@@ -494,18 +620,134 @@ def bm25_search(bm25, docs: List[Document], query: str, top_k: int = 10):
         key=lambda x: x[1],
         reverse=True
     )
+
+    debug_log(
+        "bm25_search",
+        store_mode=store_mode,
+        query=query,
+        tokenized_query=tokenized_query[:20],
+        top_hits=[
+            {
+                "source": d.metadata.get("source"),
+                "page": d.metadata.get("page"),
+                "score": round(score, 4),
+                "year": d.metadata.get("doc_year"),
+                "is_latest": d.metadata.get("is_latest"),
+            }
+            for d, score in ranked[: min(top_k, 5)]
+        ],
+    )
     return ranked[:top_k]
 
-# vectorstore에서 검색된 문서 리스트를 질문과 함께 LLM에 전달하여, 답변 생성에 활용할 수 있도록 하는 함수
-# 결과값으로 답변(answer), 슬롯 정보(slots), 검색된 문서 리스트(retrieved_docs), 이어서 물어볼 만한 질문 리스트(suggested_next_questions) 등을 반환
+
+def run_hybrid_search(
+    question: str,
+    queries: List[str],
+    intent: str,
+    detected_region: Optional[str],
+    allowed_doc_types: List[str],
+    regions: List[str],
+    store_mode: str = "latest",
+) -> List[Document]:
+    vectordb = get_vectorstore_latest() if store_mode == "latest" else get_vectorstore_all()
+    bm25, bm25_docs = get_bm25_index(store_mode)
+
+    search_filter = {
+        "$and": [
+            {"doc_type": {"$in": allowed_doc_types}},
+            {"region": {"$in": regions}},
+        ]
+    }
+
+    hybrid_pool: Dict[tuple, Dict[str, Any]] = {}
+
+    def passes_filter(doc: Document) -> bool:
+        return (
+            doc.metadata.get("doc_type") in allowed_doc_types and
+            doc.metadata.get("region") in regions
+        )
+
+    for q in queries:
+        try:
+            dense_docs = vectordb.max_marginal_relevance_search(
+                q, k=10, fetch_k=30, filter=search_filter
+            )
+        except Exception:
+            dense_docs = vectordb.similarity_search(
+                q, k=10, filter=search_filter
+            )
+
+        for rank, d in enumerate(dense_docs, start=1):
+            key = doc_unique_key(d)
+            if key not in hybrid_pool:
+                hybrid_pool[key] = {
+                    "doc": d,
+                    "dense_rank": rank,
+                    "bm25_rank": None,
+                }
+            else:
+                hybrid_pool[key]["dense_rank"] = min(
+                    hybrid_pool[key]["dense_rank"] or rank, rank
+                )
+
+        bm25_ranked = bm25_search(bm25, bm25_docs, q, top_k=10, store_mode=store_mode)
+        for rank, (d, _) in enumerate(bm25_ranked, start=1):
+            if not passes_filter(d):
+                continue
+            key = doc_unique_key(d)
+            if key not in hybrid_pool:
+                hybrid_pool[key] = {
+                    "doc": d,
+                    "dense_rank": None,
+                    "bm25_rank": rank,
+                }
+            else:
+                hybrid_pool[key]["bm25_rank"] = min(
+                    hybrid_pool[key]["bm25_rank"] or rank, rank
+                )
+
+    scored_docs = []
+    for item in hybrid_pool.values():
+        d = item["doc"]
+        dense_rrf = 1 / (60 + item["dense_rank"]) if item["dense_rank"] else 0.0
+        bm25_rrf = 1 / (60 + item["bm25_rank"]) if item["bm25_rank"] else 0.0
+        rule_score = score_document(question, d, intent, detected_region)
+
+        latest_bonus = 0.03 if d.metadata.get("is_latest") else 0.0
+        final_score = (0.62 * dense_rrf) + (0.33 * bm25_rrf) + (0.02 * rule_score) + latest_bonus
+        scored_docs.append((d, final_score))
+
+    scored_docs.sort(key=lambda x: x[1], reverse=True)
+    ranked_docs = [doc for doc, _ in scored_docs[:15]]
+    reranked_docs = rerank_documents(question, ranked_docs, top_n=8)
+
+    debug_log(
+        "hybrid_result",
+        store_mode=store_mode,
+        ranked_doc_count=len(ranked_docs),
+        reranked_doc_count=len(reranked_docs),
+        top_docs=[
+            {
+                "source": d.metadata.get("source"),
+                "page": d.metadata.get("page"),
+                "region": d.metadata.get("region"),
+                "doc_type": d.metadata.get("doc_type"),
+                "year": d.metadata.get("doc_year"),
+                "is_latest": d.metadata.get("is_latest"),
+            }
+            for d in reranked_docs[:5]
+        ],
+    )
+
+    return reranked_docs
+
+
 def retrieve_documents_from_slots(
     question: str,
     normalized: Dict[str, Any],
-    slots: Dict[str, Any]
+    slots: Dict[str, Any],
+    use_latest_only: bool = False,
 ) -> Tuple[List[Document], List[str]]:
-    vectordb = get_vectorstore()
-    bm25, bm25_docs = get_bm25_index()
-
     intent = slots.get("intent") or normalized["intent"]
     region_value = slots.get("country_of_treatment") or slots.get("region") or normalized["region"]
     detected_region = None if region_value in [None, "", "none"] else region_value
@@ -535,85 +777,75 @@ def retrieve_documents_from_slots(
     temp_normalized["intent"] = intent
     queries = make_search_queries(temp_normalized, enriched_question)
 
-    search_filter = {
-        "$and": [
-            {"doc_type": {"$in": allowed_doc_types}},
-            {"region": {"$in": regions}}
-        ]
-    }
+    debug_log(
+        "retrieve_plan",
+        question=question,
+        normalized=normalized,
+        slots=slots,
+        intent=intent,
+        detected_region=detected_region,
+        queries=queries,
+        allowed_doc_types=allowed_doc_types,
+        regions=regions,
+        use_latest_only=use_latest_only,
+    )
 
-    hybrid_pool: Dict[tuple, Dict[str, Any]] = {}
+    latest_docs = run_hybrid_search(
+        question=enriched_question,
+        queries=queries,
+        intent=intent,
+        detected_region=detected_region,
+        allowed_doc_types=allowed_doc_types,
+        regions=regions,
+        store_mode="latest",
+    )
 
-    def passes_filter(doc: Document) -> bool:
-        return (
-            doc.metadata.get("doc_type") in allowed_doc_types and
-            doc.metadata.get("region") in regions
-        )
+    if use_latest_only:
+        return latest_docs, queries
 
-    for q in queries:
-        # 1) dense
-        try:
-            dense_docs = vectordb.max_marginal_relevance_search(
-                q, k=10, fetch_k=30, filter=search_filter
-            )
-        except Exception:
-            dense_docs = vectordb.similarity_search(
-                q, k=10, filter=search_filter
-            )
+    if len(latest_docs) >= 3:
+        return latest_docs, queries
 
-        for rank, d in enumerate(dense_docs, start=1):
-            key = doc_unique_key(d)
-            if key not in hybrid_pool:
-                hybrid_pool[key] = {
-                    "doc": d,
-                    "dense_rank": rank,
-                    "bm25_rank": None,
-                }
-            else:
-                hybrid_pool[key]["dense_rank"] = min(
-                    hybrid_pool[key]["dense_rank"] or rank, rank
-                )
+    all_docs = run_hybrid_search(
+        question=enriched_question,
+        queries=queries,
+        intent=intent,
+        detected_region=detected_region,
+        allowed_doc_types=allowed_doc_types,
+        regions=regions,
+        store_mode="all",
+    )
 
-        # 2) bm25
-        bm25_ranked = bm25_search(bm25, bm25_docs, q, top_k=10)
-        for rank, (d, _) in enumerate(bm25_ranked, start=1):
-            if not passes_filter(d):
-                continue
-            key = doc_unique_key(d)
-            if key not in hybrid_pool:
-                hybrid_pool[key] = {
-                    "doc": d,
-                    "dense_rank": None,
-                    "bm25_rank": rank,
-                }
-            else:
-                hybrid_pool[key]["bm25_rank"] = min(
-                    hybrid_pool[key]["bm25_rank"] or rank, rank
-                )
+    merged_docs = []
+    seen = set()
+    for d in latest_docs + all_docs:
+        key = doc_unique_key(d)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged_docs.append(d)
 
-    # Reciprocal Rank Fusion + 기존 rule score
-    scored_docs = []
-    for item in hybrid_pool.values():
-        d = item["doc"]
-        dense_rrf = 1 / (60 + item["dense_rank"]) if item["dense_rank"] else 0.0
-        bm25_rrf = 1 / (60 + item["bm25_rank"]) if item["bm25_rank"] else 0.0
-        print(f"Doc: {d.metadata.get('source')} \
-            | dense_rank: {item['dense_rank']} | \
-                bm25_rank: {item['bm25_rank']} | \
-                    dense_rrf: {dense_rrf:.4f} | \
-                        bm25_rrf: {bm25_rrf:.4f}")
-        rule_score = score_document(enriched_question, d, intent, detected_region)
+    debug_log(
+        "retrieve_result_final",
+        latest_count=len(latest_docs),
+        all_count=len(all_docs),
+        merged_count=len(merged_docs),
+        top_docs=[
+            {
+                "source": d.metadata.get("source"),
+                "page": d.metadata.get("page"),
+                "region": d.metadata.get("region"),
+                "doc_type": d.metadata.get("doc_type"),
+                "year": d.metadata.get("doc_year"),
+                "is_latest": d.metadata.get("is_latest"),
+            }
+            for d in merged_docs[:5]
+        ],
+    )
 
-        final_score = (0.65 * dense_rrf) + (0.35 * bm25_rrf) + (0.02 * rule_score)
-        scored_docs.append((d, final_score))
+    return merged_docs[:8], queries
 
-    scored_docs.sort(key=lambda x: x[1], reverse=True)
-    ranked_docs = [doc for doc, _ in scored_docs[:15]]
 
-    reranked_docs = rerank_documents(enriched_question, ranked_docs, top_n=8)
-    return reranked_docs, queries
-
-# KNOWN_PLANS 딕셔너리는 질문에서 플랜 정보를 추출할 때 활용되는 키워드와 해당 키워드가 매핑되는 표준 플랜 이름을 정의
 KNOWN_PLANS = {
     "care base": "Care Base",
     "base": "Care Base",
@@ -716,9 +948,7 @@ def decide_missing_slots(intent: str, slots: Dict[str, Any], question: str) -> L
 def fallback_build_followup_question(language: str, missing_slots: List[str], intent: str) -> str:
     if not missing_slots:
         return ""
-    print("fallback_build_followup_question 진입==============================================`")
-    print(f"Missing slots: {missing_slots}")
-    print("fallback_build_followup_question 진입==============================================")
+
     first = missing_slots[0]
 
     if language == "ko":
@@ -758,6 +988,7 @@ def fallback_suggested_next_questions(language: str, intent: str, slots: Dict[st
         "Would you like me to check pre-authorisation requirements too?",
         "Would you like me to also check coverage limits by plan?",
     ]
+
 
 def looks_like_followup_answer(text: str) -> bool:
     t = text.strip().lower()
@@ -816,6 +1047,17 @@ def classify_and_extract_node(state: ChatState) -> ChatState:
     if followup_count >= max_followups:
         missing_slots = []
 
+    debug_log(
+        "classify_and_extract",
+        question=question,
+        normalized=normalized,
+        old_slots=old_slots,
+        new_slots=new_slots,
+        missing_slots=missing_slots,
+        followup_count=followup_count,
+        max_followups=max_followups,
+    )
+
     return {
         "normalized": normalized,
         "slots": new_slots,
@@ -839,6 +1081,13 @@ def ask_followup_node(state: ChatState) -> ChatState:
         slots=state.get("slots", {}),
     )
 
+    debug_log(
+        "ask_followup",
+        question=state.get("user_question"),
+        followup_question=followup_question,
+        missing_slots=state.get("missing_slots", []),
+    )
+
     return {
         "needs_followup": True,
         "followup_question": followup_question,
@@ -855,7 +1104,9 @@ def retrieve_node(state: ChatState) -> ChatState:
         question=state["user_question"],
         normalized=state["normalized"],
         slots=state.get("slots", {}),
+        use_latest_only=False,
     )
+
     return {
         "retrieved_docs": docs,
         "search_queries": queries,
@@ -896,6 +1147,8 @@ Present it as document-based insurance guidance.
 IMPORTANT:
 - Answer in {answer_language}.
 - Match the user's language.
+- Prefer the newest applicable document if multiple versions conflict.
+- If you mention a historical rule, explicitly separate it from the latest rule.
 
 Conversation state:
 - intent: {intent}
@@ -980,8 +1233,9 @@ def run_chat_turn(
     followup_count = conversation_state.get("followup_count", 0)
     max_followups = conversation_state.get("max_followups", 2)
     pending_followup = conversation_state.get("pending_followup", False)
+    last_followup_question = conversation_state.get("last_followup_question", "")
     is_followup_answer = pending_followup or looks_like_followup_answer(question)
-    
+
     init_state: ChatState = {
         "user_question": question,
         "messages": [HumanMessage(content=question)],
@@ -989,6 +1243,7 @@ def run_chat_turn(
         "followup_count": followup_count,
         "max_followups": max_followups,
         "is_followup_answer": is_followup_answer,
+        "followup_question": last_followup_question,
     }
 
     result = CHATBOT_GRAPH.invoke(
@@ -1021,10 +1276,9 @@ def generate_answer(question: str) -> Tuple[str, List[Document]]:
     하위 호환용.
     기존 main.py에서 단발 호출할 때도 동작하게 유지.
     """
-    result = run_chat_turn(question=question, thread_id="single-turn")
+    result = run_chat_turn(question=question, conversation_state={"thread_id": "single-turn"})
     return result.get("answer", ""), result.get("retrieved_docs", [])
 
-_RERANKER = None
 
 # Reranker 모델을 싱글턴으로 로드하여 재사용
 def get_reranker():
