@@ -3,4 +3,4 @@ __pycache__/
 .DS_Store
 src/.DS_Store
 vectordb/.DS_Store
-chroma.sqlite3
+# chroma.sqlite3
