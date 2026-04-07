@@ -38,7 +38,7 @@ from tricare_core import (
 )
 
 
-# State 정의 
+# State 정의
 
 class TriCareState(TypedDict):
     messages:             Annotated[list, add_messages]  # 대화 히스토리 누적
@@ -49,18 +49,18 @@ class TriCareState(TypedDict):
     needs_clarification:  bool
 
 
-#  컨텍스트 추출 유틸 
+# 컨텍스트 추출 유틸
 
 PLAN_KEYWORDS = {
-    'prime':'TRICARE Prime',
-    'select':  'TRICARE Select',
-    'for life': 'TRICARE For Life',
-    'tfl':     'TRICARE For Life',
-    'reserve': 'TRICARE Reserve Select',
-    'trs':  'TRICARE Reserve Select',
+    'prime':       'TRICARE Prime',
+    'select':      'TRICARE Select',
+    'for life':    'TRICARE For Life',
+    'tfl':         'TRICARE For Life',
+    'reserve':     'TRICARE Reserve Select',
+    'trs':         'TRICARE Reserve Select',
     'young adult': 'TRICARE Young Adult',
-    'tya':    'TRICARE Young Adult',
-    'addp': 'TRICARE ADDP',
+    'tya':         'TRICARE Young Adult',
+    'addp':        'TRICARE ADDP',
 }
 
 REGION_KEYWORDS = {
@@ -105,13 +105,13 @@ def _get_last_user_msg(messages: list) -> str:
     return ''
 
 
-#  노드 함수 
+# 노드 함수
 
 def clarify_node(state: TriCareState) -> dict:
     """
     [clarify 노드]
     질문이 충분한지 LLM으로 판단.
-    부족하면 한국어 후속 질문 생성 → needs_clarification=True 반환.
+    부족하면 사용자 언어로 후속 질문 생성 → needs_clarification=True 반환.
     충분하면 needs_clarification=False → retrieve 노드로 진행.
     """
     last_user_msg = _get_last_user_msg(state['messages'])
@@ -121,6 +121,10 @@ def clarify_node(state: TriCareState) -> dict:
     plan_tier = extracted['plan_tier'] or state.get('plan_tier')
     region    = extracted['region']    or state.get('region')
     conv_hist = _build_conv_history(state['messages'])
+
+    # [수정] 사용자 질문 언어 감지 → 후속 질문도 같은 언어로 생성
+    language_code   = detect_language(last_user_msg)
+    answer_language = LANGUAGE_NAME_MAP.get(language_code, 'English')
 
     clarify_prompt = (
         "You are a TRICARE insurance chatbot assistant.\n"
@@ -135,7 +139,7 @@ def clarify_node(state: TriCareState) -> dict:
         "- Clear enough to search → sufficient\n\n"
         'Respond ONLY in JSON:\n'
         '{"needs_clarification": true/false, '
-        '"follow_up_question": "한국어 질문 (needs_clarification=true일 때만)"}'
+        f'"follow_up_question": "follow-up question in {answer_language} (only when needs_clarification=true)"}}'
     )
 
     try:
@@ -147,9 +151,9 @@ def clarify_node(state: TriCareState) -> dict:
         needs, fup = False, ''
 
     base = {
-        'plan_tier':  plan_tier,
-        'region':     region,
-        'turns':      state.get('turns', 0) + 1,
+        'plan_tier':      plan_tier,
+        'region':         region,
+        'turns':          state.get('turns', 0) + 1,
         'retrieved_docs': [],
     }
 
@@ -180,7 +184,7 @@ def retrieve_node(state: TriCareState) -> dict:
 
     return {'retrieved_docs': docs}
 
-# 팀원과 합의하에 통일
+
 def generate_node(state: TriCareState) -> dict:
     """
     [generate 노드]
@@ -218,7 +222,8 @@ def generate_node(state: TriCareState) -> dict:
     resp = tricare_core.model.invoke([HumanMessage(content=prompt_text)])
     return {'messages': [AIMessage(content=resp.content)]}
 
-#  그래프 컴파일 
+
+# 그래프 컴파일
 
 def _should_clarify(state: TriCareState) -> str:
     return END if state.get('needs_clarification', False) else 'retrieve'
@@ -245,19 +250,12 @@ def _build_graph() -> StateGraph:
 tricare_graph = _build_graph()
 
 
-#  TricareChat 클래스 
+# TricareChat 클래스
 
 class TricareChat:
     """
     Streamlit 세션별로 인스턴스를 생성해서 사용.
     각 인스턴스가 독립적인 State를 유지함.
-
-    사용 예시 (Streamlit):
-        if 'tricare_chat' not in st.session_state:
-            st.session_state.tricare_chat = TricareChat()
-
-        result = st.session_state.tricare_chat.send(user_input)
-        st.write(result['answer'])
     """
 
     def __init__(self):
@@ -275,26 +273,14 @@ class TricareChat:
         }
 
     def send(self, user_input: str) -> dict:
-        """
-        사용자 입력을 받아 챗봇 응답을 반환.
-
-        Returns
-        -------
-        dict:
-            answer      : str          챗봇 답변
-            plan_tier   : str | None   현재 State의 플랜명
-            region      : str | None   현재 State의 지역
-            turns       : int          대화 턴 수
-            retrieved_docs : list      검색된 문서 목록
-            needs_clarification : bool 후속 질문 여부
-        """
+        """사용자 입력을 받아 챗봇 응답을 반환."""
         input_state = dict(self._state)
         input_state['messages'] = (
             self._state['messages'] + [HumanMessage(content=user_input)]
         )
 
-        result       = tricare_graph.invoke(input_state)
-        self._state  = result
+        result      = tricare_graph.invoke(input_state)
+        self._state = result
 
         # 마지막 AI 메시지 추출
         answer = ''
@@ -318,7 +304,7 @@ class TricareChat:
 
     @property
     def history(self) -> list:
-        """현재 대화 히스토리 반환 (HumanMessage / AIMessage 리스트)"""
+        """현재 대화 히스토리 반환"""
         return self._state['messages']
 
     @property

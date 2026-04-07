@@ -19,6 +19,7 @@ TRICARE RAG 핵심 함수 모듈
 
 import os
 import json as _json
+from pathlib import Path
 from dotenv import load_dotenv
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -29,34 +30,16 @@ from langchain_core.messages import HumanMessage
 from sentence_transformers import CrossEncoder
 
 load_dotenv()
-from pathlib import Path
 
-
-<<<<<<< Updated upstream
-from pathlib import Path  # 없으면 추가
-BASE_DIR = Path(__file__).resolve().parent.parent.parent  # Insurance_Benefit_Chatbot 루트
-
-#  상수 
-PERSIST_TEXT     = str(BASE_DIR / 'vectordb' / 'tricare_text')
-PERSIST_TABLE    = str(BASE_DIR / 'vectordb' / 'tricare_table')
-
-#  상수 
-PERSIST_TEXT     = './chroma_db'
-PERSIST_TABLE    = './chroma_db2'
-
-COLLECTION_TEXT  = 'tricare_rag'
-=======
-#  상수
-BASE_DIR      = Path(__file__).resolve().parent.parent.parent
+# 상수 — tricare_core.py 기준 같은 폴더에서 chroma_db, chroma_db2를 찾음
+BASE_DIR      = Path(__file__).resolve().parent
 PERSIST_TEXT  = str(BASE_DIR / 'chroma_db')
 PERSIST_TABLE = str(BASE_DIR / 'chroma_db2')
-COLLECTION_TEXT  = 'tricare_rag'          #
->>>>>>> Stashed changes
+COLLECTION_TEXT  = 'tricare_rag'
 COLLECTION_TABLE = 'tricare_cost_tables'
 
 # 파일명 → 공식 출처 URL 매핑
 SOURCE_URL_MAP = {
-    # PDF 핸드북
     "TOP_Handbook_AUG_2023_FINAL_092223_508_1.pdf":          "https://www.tricare-overseas.com/beneficiaries/top",
     "Overseas_HB해외_프로그램_안내서.pdf":                      "https://www.tricare.mil/Plans/HealthPlans/overseas",
     "TFL_HB평생_트라이케어.pdf":                               "https://www.tricare.mil/Plans/HealthPlans/TFL",
@@ -65,7 +48,6 @@ SOURCE_URL_MAP = {
     "Choices_US_HB미국_내_tricare_선택_가이드.pdf":              "https://www.tricare.mil/Plans",
     "NGR_HB국가방위군_및_예비군을_위한_트라이케어_안내서.pdf":       "https://www.tricare.mil/Plans/Reserve",
     "ADDP_Brochure_FINAL_122624_508c.pdf":                   "https://www.tricare.mil/Plans/Dental/ADDP",
-    # 브로셔
     "Maternity_Br_1.pdf":        "https://www.tricare.mil/CoveredServices/Maternity",
     "Medicare_Turning_65_Br.pdf": "https://www.tricare.mil/Plans/HealthPlans/TFL",
     "Medicare_Under_65_Br_7.pdf": "https://www.tricare.mil/Plans/HealthPlans/TFL",
@@ -73,22 +55,27 @@ SOURCE_URL_MAP = {
     "QLEs_FS_2.pdf":             "https://www.tricare.mil/LifeEvents",
     "Retiring_AD_Br.pdf":        "https://www.tricare.mil/LifeEvents/Retiring",
     "Retiring_NGR_Br.pdf":       "https://www.tricare.mil/LifeEvents/Retiring/RetiredNGR",
-    # CSV
     "mental_health_services.csv":  "https://www.tricare.mil/CoveredServices/MentalHealth",
     "tricare_exclusions.csv":      "https://www.tricare.mil/CoveredServices/IsItCovered/Exclusions",
     "TricarePlans.csv":            "https://www.tricare.mil/Plans",
     "Health_Plan_Costs.csv":       "https://www.tricare.mil/Costs",
 }
 
+# [수정 1] 다국어 지원 추가 — zh-cn/zh-tw/fr/de/es 추가
 LANGUAGE_NAME_MAP = {
-    'ko': 'Korean',
-    'en': 'English',
-    'zh': 'Chinese',
-    'ja': 'Japanese',
+    'ko':    'Korean',
+    'en':    'English',
+    'zh':    'Chinese',
+    'zh-cn': 'Chinese',
+    'zh-tw': 'Chinese',
+    'ja':    'Japanese',
+    'fr':    'French',
+    'de':    'German',
+    'es':    'Spanish',
     'other': "the same language as the user's question",
 }
 
-#  전역 객체 (load_vector_stores() 호출 후 초기화됨) 
+# 전역 객체 (load_vector_stores() 호출 후 초기화됨)
 embedding_model    = None
 vector_store       = None
 table_vector_store = None
@@ -96,17 +83,13 @@ bm25_retriever     = None
 reranker           = None
 model              = None
 _norm_model        = None
-_all_text_chunks   = None  # BM25용 청크 목록
+_all_text_chunks   = None
 
 
 def load_vector_stores(device: str = 'cpu') -> None:
     """
     저장된 Chroma 벡터 DB를 로드하고 전역 객체를 초기화함.
     Streamlit 앱 시작 시 한 번만 호출하면 됨.
-
-    Parameters
-    ----------
-    device : 'cpu' or 'cuda'
     """
     global embedding_model, vector_store, table_vector_store
     global bm25_retriever, reranker, model, _norm_model, _all_text_chunks
@@ -148,16 +131,33 @@ def load_vector_stores(device: str = 'cpu') -> None:
     print('✅ 로드 완료')
 
 
-#  유틸 함수 
+# 유틸 함수
+
+# [수정 2] detect_language — langdetect 폴백 추가 (프랑스어/독일어 등 라틴 계열 감지)
+try:
+    from langdetect import detect, LangDetectException
+    _langdetect_available = True
+except ImportError:
+    _langdetect_available = False
 
 def detect_language(text: str) -> str:
-    """유니코드 범위로 언어 감지"""
+    """
+    유니코드 범위로 한/중/일 판별 후 나머지는 langdetect로 감지.
+    langdetect 미설치 시 'en' 반환.
+    """
     if any('\u4e00' <= c <= '\u9fff' for c in text):
         return 'zh'
     if any('\u3040' <= c <= '\u30ff' for c in text):
         return 'ja'
     if any('\uac00' <= c <= '\ud7a3' for c in text):
         return 'ko'
+    # 프랑스어·독일어 등 라틴 계열은 langdetect로 판별
+    if _langdetect_available:
+        try:
+            lang = detect(text)
+            return lang if lang in LANGUAGE_NAME_MAP else 'en'
+        except LangDetectException:
+            return 'en'
     return 'en'
 
 
@@ -196,12 +196,12 @@ def normalize_question(question: str) -> dict:
         return {'intent': 'general', 'region': 'unknown', 'english_query': question}
 
 
-#  Hybrid + Rerank 검색 
+# Hybrid + Rerank 검색
 
 def _hybrid_retrieve(question: str, bm25_ret, vec_ret,
                      bm25_weight: float = 0.4, vec_weight: float = 0.6,
                      k: int = 6) -> list:
-    """BM25 + MMR 결과를 RRF 방식으로 합산"""
+    """BM25 + 벡터 검색 결과를 RRF 방식으로 합산"""
     bm25_docs = bm25_ret.invoke(question)
     vec_docs  = vec_ret.invoke(question)
 
@@ -221,13 +221,15 @@ def _hybrid_retrieve(question: str, bm25_ret, vec_ret,
 
 def hybrid_retrieve_wide(question: str, k: int = 20) -> list:
     """
-    Rerank 전 단계: BM25+MMR으로 넓게 후보 수집.
-    bm25_retriever 인덱스를 재사용해 속도 최적화.
+    Rerank 전 단계: BM25+similarity로 넓게 후보 수집.
+    bm25_retriever k를 동적으로 변경해 BM25도 k개 후보 수집.
     """
     bm25_retriever.k = k
+    # [수정 3] search_type 'mmr' → 'similarity'
+    # 후보 수집 단계는 다양성보다 recall이 목적이므로 similarity가 적합
     vec_wide = vector_store.as_retriever(
-        search_type='mmr',
-        search_kwargs={'k': k, 'fetch_k': 40}
+        search_type='similarity',
+        search_kwargs={'k': k}
     )
     result = _hybrid_retrieve(question, bm25_retriever, vec_wide, k=k)
     bm25_retriever.k = 6  # 기본값 복원
@@ -260,24 +262,21 @@ def search(question: str) -> list:
     list[Document]  상위 6개 문서
     """
     candidates = hybrid_retrieve_wide(question)
-    return rerank_docs(question, candidates, top_k=6)
+    docs = rerank_docs(question, candidates, top_k=6)
+    # [수정 4] 출처 일관성 보장 — 동일 질문이면 항상 같은 순서로 정렬
+    docs.sort(key=lambda d: (
+        d.metadata.get('source_file', d.metadata.get('source', '')),
+        d.metadata.get('page', 0)
+    ))
+    return docs
 
 
-#  RAG 체인 (단발성 질문용) 
+# RAG 체인 (단발성 질문용)
 
 def make_rag_chain_v3(question: str, conversation_context: str = '') -> tuple:
     """
     Hybrid+Rerank RAG 체인 (단발성).
     LangGraph 없이 단순 Q&A 할 때 사용.
-
-    Parameters
-    ----------
-    question             : 사용자 질문
-    conversation_context : 이전 대화 히스토리 문자열 (멀티턴 시 전달)
-
-    Returns
-    -------
-    (answer: str, docs: list)
     """
     language_code   = detect_language(question)
     answer_language = LANGUAGE_NAME_MAP.get(language_code, 'English')
