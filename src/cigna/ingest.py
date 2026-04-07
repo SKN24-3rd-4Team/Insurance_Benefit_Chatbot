@@ -334,7 +334,7 @@ def load_vectorstores():
     return vs_latest, vs_all
 
 
-def update_vectorstore_latest(vectorstore_latest_, new_pdf_meta: dict) -> None:
+def update_vectorstore_latest(vectorstore_latest_, vectorstore_all_,new_pdf_meta: dict) -> None:
     """신규 PDF가 나왔을 때 vectorstore_latest를 업데이트한다."""
     new_type = new_pdf_meta['source_type']
 
@@ -356,7 +356,11 @@ def update_vectorstore_latest(vectorstore_latest_, new_pdf_meta: dict) -> None:
     new_raw    = load_pdf(new_pdf_meta)
     new_chunks = text_splitter.split_documents(new_raw)
     vectorstore_latest_.add_documents(new_chunks)
+    vectorstore_all_.add_documents(new_chunks)  # all에도 신규 버전 추가
+
     print(f'  ✅ 신규 최신 청크 {len(new_chunks)}개 추가 ({new_type} {new_pdf_meta["doc_version"]})')
+    print(f'  ✅ vectorstore_all에도 {len(new_chunks)}개 추가')
+
 
 
 # ══════════════════════════════════════════════════════════════════
