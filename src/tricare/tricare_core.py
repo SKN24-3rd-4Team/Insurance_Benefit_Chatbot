@@ -14,6 +14,9 @@ TRICARE RAG 핵심 함수 모듈
     answer, docs = make_rag_chain_v3("질문", model)
 """
 
+# 만약 오류 난다면 경로 먼저 확인하기
+# tricare의 chroma_db, chroma_db2 파일을 tricare_core.py 파일이랑 같은 위치에 두게 하고 돌려보면 됨
+
 import os
 import json as _json
 from dotenv import load_dotenv
@@ -26,7 +29,10 @@ from langchain_core.messages import HumanMessage
 from sentence_transformers import CrossEncoder
 
 load_dotenv()
+from pathlib import Path
 
+
+<<<<<<< Updated upstream
 from pathlib import Path  # 없으면 추가
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # Insurance_Benefit_Chatbot 루트
 
@@ -39,6 +45,13 @@ PERSIST_TEXT     = './chroma_db'
 PERSIST_TABLE    = './chroma_db2'
 
 COLLECTION_TEXT  = 'tricare_rag'
+=======
+#  상수
+BASE_DIR      = Path(__file__).resolve().parent.parent.parent
+PERSIST_TEXT  = str(BASE_DIR / 'chroma_db')
+PERSIST_TABLE = str(BASE_DIR / 'chroma_db2')
+COLLECTION_TEXT  = 'tricare_rag'          #
+>>>>>>> Stashed changes
 COLLECTION_TABLE = 'tricare_cost_tables'
 
 # 파일명 → 공식 출처 URL 매핑

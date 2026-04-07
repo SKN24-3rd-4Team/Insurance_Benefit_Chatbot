@@ -3,3 +3,7 @@ __pycache__/
 .DS_Store
 src/.DS_Store
 vectordb/.DS_Store
+vectordb/.DS_Store
+.vscode
+**/.chunk_hash
+.git

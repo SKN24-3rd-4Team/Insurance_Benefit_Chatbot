@@ -1,6 +1,6 @@
 """
 Insurance_Benefit_Chatbot/main.py
-실행: streamlit run main.py
+실행: streamlit run combined_main.py
 """
 import os
 import uuid
