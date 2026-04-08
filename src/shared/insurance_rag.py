@@ -44,6 +44,8 @@ class InsuranceRAGGraph:
             role = "User" if isinstance(m, HumanMessage) else "AI"
             history.append(f"{role}: {m.content}")
         context_str = "\n".join(history[-5:])
+        context_str += "\n\n" + self.plugin.clarification_style  # 공통 규칙 추가
+
 
         # ── 각 플러그인의 analyze() 호출 ──────────────────────────
         analysis = self.plugin.analyze(
@@ -118,12 +120,8 @@ class InsuranceRAGGraph:
         [CRITICAL: LANGUAGE RULE]
         - You MUST respond entirely in {answer_language}. 
         - 답변은 반드시 {answer_language}로 작성하세요.
-
-        [CRITICAL: ANTI-MIXING & CITATION RULE]
-        1. **플랜/제품 혼용 금지**: 검색된 문서들이 서로 다른 보험 상품에 대한 것이라면, 이를 하나의 절차로 합쳐서 답변하지 마세요. 상품별 차이점을 구분하세요.
-        2. **출처 고정**: 모든 문장 끝에 반드시 해당 정보의 근거가 된 (출처: 파일명, p.번호)를 남기세요.
-        3. **정보 부재 시**: 문서에 없는 내용을 추측하지 말고 "해당 내용은 제공된 문서에서 확인되지 않습니다"라고 명시하세요.
         """
+        common_rules +=  "\n\n" + self.plugin.common_rules
 
         messages = [
             SystemMessage(content=common_rules + self.plugin.system_prompt),

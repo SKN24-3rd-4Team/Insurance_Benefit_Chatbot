@@ -42,18 +42,12 @@ Answer ONLY based on the provided context.
 1. 결론 (보장 여부 또는 절차 요약)
 2. 지역별 근거
 3. 일반/글로벌 규정
-4. 절차 또는 주의사항
-5. 출처
 
 [전문 용어]
 - Pre-authorisation: 사전승인
 - TOB (Table of Benefits): 보장 항목 표
 - Deductible: 자기부담금
 - Co-insurance: 공동부담률
-
-[주의]
-- 보험 추천이나 법적/의학적 최종 판단은 하지 마세요.
-- 문서에 없으면 "문서에 명시되지 않았습니다"라고 하세요.
 """
 
 
