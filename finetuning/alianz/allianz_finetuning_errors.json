@@ -1,0 +1,227 @@
+[
+  {
+    "idx": 0,
+    "question": "Allianz Care에서 입원 치료(Inpatient treatment)는 어떻게 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 1,
+    "question": "What does Allianz Care cover for outpatient medical treatment?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 2,
+    "question": "Allianz Care에서 응급 치료(Emergency treatment)는 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 3,
+    "question": "Does Allianz Care cover mental health treatment?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 4,
+    "question": "Allianz Care에서 암 치료(Cancer treatment)는 어떻게 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 5,
+    "question": "What maternity benefits does Allianz Care provide?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 6,
+    "question": "Allianz Care에서 치과 치료(Dental treatment)는 보장이 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 7,
+    "question": "Does Allianz Care cover vision care and optical treatment?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 8,
+    "question": "Allianz Care에서 물리치료(Physiotherapy)는 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 9,
+    "question": "What prescription drug benefits does Allianz Care offer?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 10,
+    "question": "Allianz Care에서 심리 치료(Psychotherapy)는 보장이 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 11,
+    "question": "Does Allianz Care cover preventive care and health check-ups?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 12,
+    "question": "Allianz Care에서 재활 치료(Rehabilitation)는 어떻게 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 13,
+    "question": "What are the coverage limits for inpatient treatment under Allianz Care?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 14,
+    "question": "Allianz Care에서 만성 질환(Chronic condition) 치료는 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 15,
+    "question": "Does Allianz Care cover home nursing care?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 16,
+    "question": "Allianz Care에서 장기 입원 시 보장 한도는 얼마인가요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 17,
+    "question": "What alternative treatments does Allianz Care cover?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 18,
+    "question": "Allianz Care에서 출산 전후(Maternity) 검사 비용은 어떻게 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 19,
+    "question": "Does Allianz Care cover organ transplants?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 20,
+    "question": "Allianz Care에서 HIV/AIDS 치료는 보장이 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 21,
+    "question": "What does Allianz Care cover for psychiatric inpatient treatment?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 22,
+    "question": "Allianz Care에서 수술 후 합병증 치료는 보장이 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 23,
+    "question": "Does Allianz Care have any coverage for congenital conditions?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 24,
+    "question": "Allianz Care의 Care Base, Care Enhanced, Care Signature 플랜 간 보장 차이는 무엇인가요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 25,
+    "question": "What is NOT covered under Allianz Care (exclusions)?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 26,
+    "question": "Allianz Care에서 사고로 인한 응급 치료는 바로 보장이 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 27,
+    "question": "Does Allianz Care cover experimental or investigational treatments?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 28,
+    "question": "Allianz Care에서 체외수정(IVF) 같은 불임 치료는 보장되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 29,
+    "question": "What does Allianz Care cover for newborn care?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 30,
+    "question": "싱가포르에서 Allianz Care 입원 치료 보장 한도는 얼마인가요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 31,
+    "question": "What are the outpatient benefits under Allianz Care in the UK?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 32,
+    "question": "홍콩에서 Allianz Care 외래 진료 보장이 어떻게 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 33,
+    "question": "Does Allianz Care cover maternity in the UAE (Dubai)?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 34,
+    "question": "베트남에서 Allianz Care로 응급 치료 받으면 어떻게 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 55,
+    "question": "Allianz Care에서 입원 사전승인을 받았는데 치료 계획이 바뀌면 다시 신청해야 하나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 56,
+    "question": "I was admitted as an emergency but Allianz later found it was not urgent. Will my claim be rejected?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 57,
+    "question": "Allianz Care에서 연간 한도를 다 썼는데 이후 치료는 어떻게 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 58,
+    "question": "두 나라에 걸쳐 치료를 받았어요. Allianz에서 어느 나라 기준으로 보장하나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 59,
+    "question": "Allianz Care 보험 갱신 전에 받은 치료인데 갱신 후 청구하면 어떻게 되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 60,
+    "question": "I received treatment in a non-network hospital. Will Allianz reimburse at a lower rate?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 61,
+    "question": "Allianz Care에서 치료비 일부만 환급된 이유가 무엇인가요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 62,
+    "question": "사전승인 없이 긴급 수술을 받았는데 Allianz에서 나중에 승인을 소급 적용해주나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 63,
+    "question": "Allianz Care에서 동일 질환으로 두 나라에서 치료를 받았을 때 한도는 합산되나요?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  },
+  {
+    "idx": 64,
+    "question": "My Allianz claim was partially denied due to \"not medically necessary\". How do I appeal?",
+    "error": "run_chat_turn() got an unexpected keyword argument 'thread_id'"
+  }
+]
