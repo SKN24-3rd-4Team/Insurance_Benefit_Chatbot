@@ -78,8 +78,8 @@ class InsuranceRAGGraph:
             }
         )
 
-        print("🔍 context_str:", context_str)        # 추가
-        print("🔍 analyze 결과:", analysis)           # 추가
+        # print("🔍 context_str:", context_str)        
+        # print("🔍 analyze 결과:", analysis)         
 
         # plan / treatment 누적 (플러그인이 이미 처리했지만 state 반영)
         final_plan      = analysis.get("plan_or_intent")
@@ -163,29 +163,29 @@ class InsuranceRAGGraph:
     
     def clarify_node(self, state: InsuranceState) -> dict:
         from langchain_core.messages import AIMessage
-    
+
         block_reason = state.get("extra", {}).get("block_reason")
         question = state.get("current_question", "")
-    
+
         if block_reason == "recommendation":
             msg = f"""User said: "{question}"
             Respond in the same language as the user that insurance recommendations 
             cannot be provided by law, and you can only guide on enrolled plan coverage.
             Keep it short and polite."""
-    
+
         elif block_reason == "pii":
             msg = f"""User said: "{question}"
             Respond in the same language as the user that you cannot process 
             personal identifying information, and ask them to describe their 
             situation in general terms instead.
             Keep it short and polite."""
-    
+
         else:
             return {"messages": [AIMessage(content=state['clarification_msg'])]}
-    
+
         response = self.chat_llm.invoke([HumanMessage(content=msg)])
         return {"messages": [AIMessage(content=response.content)]}
-        
+
     def route_after_analyze(self, state: InsuranceState) -> str:
             analysis = state.get('normalized_query', {})
             
