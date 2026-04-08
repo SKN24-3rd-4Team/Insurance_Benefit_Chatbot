@@ -82,15 +82,25 @@ if prompt := st.chat_input("질문을 입력하세요..."):
             snapshot  = bot.get_state(config)
             prev_plan = snapshot.values.get("plan_or_intent") if snapshot.values else None
 
+
             result = bot.invoke(
                 {
-                    "messages":       [HumanMessage(content=prompt)],
-                    "plan_or_intent": prev_plan,
+                    "messages":        [HumanMessage(content=prompt)],
+                    "plan_or_intent":  prev_plan,
+                    "known_treatment": snapshot.values.get("known_treatment") if snapshot.values else None,
+                    "normalized_query": {},
+                    "retrieved_docs":  [],
+                    "current_question": "",
+                    "clarification_msg": "",
+                    "slots":           snapshot.values.get("slots", {}) if snapshot.values else {},
+                    "followup_count":  snapshot.values.get("followup_count", 0) if snapshot.values else 0,
+                    "max_followups":   2,
+                    "extra":           snapshot.values.get("extra", {}) if snapshot.values else {},
                 },
                 config=config
             )
+            
             answer = result["messages"][-1].content
-
         st.write(answer)
 
     st.session_state[msg_key].append(HumanMessage(content=prompt))

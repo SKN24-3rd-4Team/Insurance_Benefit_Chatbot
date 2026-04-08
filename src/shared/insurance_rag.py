@@ -44,7 +44,6 @@ class InsuranceRAGGraph:
             role = "User" if isinstance(m, HumanMessage) else "AI"
             history.append(f"{role}: {m.content}")
         context_str = "\n".join(history[-5:])
-        context_str += "\n\n" + self.plugin.clarification_style  # 공통 규칙 추가
 
 
         # ── 각 플러그인의 analyze() 호출 ──────────────────────────
@@ -62,6 +61,9 @@ class InsuranceRAGGraph:
                 "extra":             state.get("extra", {}),
             }
         )
+
+        print("🔍 context_str:", context_str)        # 추가
+        print("🔍 analyze 결과:", analysis)           # 추가
 
         # plan / treatment 누적 (플러그인이 이미 처리했지만 state 반영)
         final_plan      = analysis.get("plan_or_intent")
@@ -122,6 +124,14 @@ class InsuranceRAGGraph:
         - 답변은 반드시 {answer_language}로 작성하세요.
         """
         common_rules +=  "\n\n" + self.plugin.common_rules
+
+        common_rules += f"""
+        [DISCLAIMER RULE]
+        If your answer includes any disclaimer, limitation, or caveat about coverage accuracy,
+        always append the following sentence at the very end, **translated into {answer_language}**:
+        "⚠️ For final plan selection, please consult directly with your insurance provider based on your personal circumstances and coverage needs."
+        This must appear as the last line, after all other content.
+        """
 
         messages = [
             SystemMessage(content=common_rules + self.plugin.system_prompt),

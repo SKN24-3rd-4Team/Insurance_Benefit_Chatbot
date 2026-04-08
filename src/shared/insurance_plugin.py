@@ -49,18 +49,16 @@ class InsurancePlugin(ABC):
     3. **No insurance recommendations**: Never recommend any insurance product under any circumstances.
     4. **No personal information**: Never collect or process any personally identifiable information that can be specified to a single person.
     5. **No speculation**: If information is absent from the documents, explicitly state "This information could not be confirmed in the provided documents." Do not guess.
-
-    [DISCLAIMER RULE]
-    If your answer includes any disclaimer, limitation, or caveat about coverage accuracy,
-    always append the following sentence at the very end of your response,
-    translated into the same language as your answer:
-    "⚠️ For final plan selection, please consult directly with your insurance provider based on your personal circumstances and coverage needs."
-    This must appear as the last line, after all other content."
     """
 
     @property
-    def clarification_style(self) -> str:
+    def analyze_rules(self) -> str:
         return """
+    [PLAN EXTRACTION RULES]
+    - If two plans are compared ("A vs B", "A와 B 차이") → needs_clarification=true
+      Ask which single plan they want to know about
+    - Single plan mentioned → extract that plan
+    
     [CLARIFICATION MESSAGE STYLE - CRITICAL]
     - If user says they don't know or can't remember:
       * Acknowledge it first with empathy
