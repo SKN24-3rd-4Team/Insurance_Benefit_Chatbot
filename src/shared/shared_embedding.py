@@ -14,7 +14,8 @@ def get_embedding_model() -> HuggingFaceEmbeddings:
         model_name='BAAI/bge-m3',
         model_kwargs={
             'device': device,
-            'model_kwargs': {'torch_dtype': torch.float16}
+            # 'model_kwargs': {'torch_dtype': torch.float16}
+            'model_kwargs': {'torch_dtype': torch.float16 if torch.cuda.is_available() else torch.float32}
         },
         encode_kwargs={'normalize_embeddings': True, 'batch_size': 8}
     )

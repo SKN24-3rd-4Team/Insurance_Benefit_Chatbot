@@ -3,6 +3,7 @@ Insurance_Benefit_Chatbot/main.py
 실행: streamlit run main.py
 """
 import os
+import re
 import uuid
 import streamlit as st
 from dotenv import load_dotenv

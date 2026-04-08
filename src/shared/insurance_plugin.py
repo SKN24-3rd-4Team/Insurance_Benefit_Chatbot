@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from langchain_core.documents import Document
-
+import re
 
 class InsurancePlugin(ABC):
 
@@ -68,7 +68,6 @@ class InsurancePlugin(ABC):
     - Each clarification must feel like a natural conversation, not a form
     - clarification_message MUST be in the SAME language as the user message
     """
-    import re
 
     PII_PATTERNS = [
         r'\b\d{6}[-]\d{7}\b',          # 주민번호
