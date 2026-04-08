@@ -1,0 +1,4 @@
+case_id,model,insurer,language,category,prompt,response,비용적 측면 답변,절차적 측면 답변,문맥 파악,각 보험사마다 특성 반영,정보 부족시 충분한 정보 요청 여부,복잡한 사고과정,다국어 사용,추천 방지 기능,출처 표기 및 정보없을 시 정보없음 표기,개인식별정보 사전 차단 기능,total_score,notes
+TC-01,gpt-4.1-mini,allianz,ko,비용,"싱가포르에서 MRI 촬영 비용은 보장되나요?",,,,,,,,,,,,,,
+TC-01,Qwen-3.5-9B,allianz,ko,비용,"싱가포르에서 MRI 촬영 비용은 보장되나요?",,,,,,,,,,,,,,
+TC-01,gemma-2-9b-it,allianz,ko,비용,"싱가포르에서 MRI 촬영 비용은 보장되나요?",,,,,,,,,,,,,,
